@@ -1,6 +1,6 @@
 use std::convert::AsMut;
 
-static AES_SBOX: [[u8;16];16] = [ [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76],
+const AES_SBOX: [[u8;16];16] = [ [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76],
                                   [0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf, 0x9c, 0xa4, 0x72, 0xc0],
                                   [0xb7, 0xfd, 0x93, 0x26, 0x36, 0x3f, 0xf7, 0xcc, 0x34, 0xa5, 0xe5, 0xf1, 0x71, 0xd8, 0x31, 0x15],
                                   [0x04, 0xc7, 0x23, 0xc3, 0x18, 0x96, 0x05, 0x9a, 0x07, 0x12, 0x80, 0xe2, 0xeb, 0x27, 0xb2, 0x75],
@@ -17,7 +17,7 @@ static AES_SBOX: [[u8;16];16] = [ [0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc
                                   [0xe1, 0xf8, 0x98, 0x11, 0x69, 0xd9, 0x8e, 0x94, 0x9b, 0x1e, 0x87, 0xe9, 0xce, 0x55, 0x28, 0xdf],
                                   [0x8c, 0xa1, 0x89, 0x0d, 0xbf, 0xe6, 0x42, 0x68, 0x41, 0x99, 0x2d, 0x0f, 0xb0, 0x54, 0xbb, 0x16] ];
 
-static INVERSE_AES_SBOX: [[u8;16];16] = [ [0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb],
+const INVERSE_AES_SBOX: [[u8;16];16] = [ [0x52, 0x09, 0x6a, 0xd5, 0x30, 0x36, 0xa5, 0x38, 0xbf, 0x40, 0xa3, 0x9e, 0x81, 0xf3, 0xd7, 0xfb],
                                           [0x7c, 0xe3, 0x39, 0x82, 0x9b, 0x2f, 0xff, 0x87, 0x34, 0x8e, 0x43, 0x44, 0xc4, 0xde, 0xe9, 0xcb],
                                           [0x54, 0x7b, 0x94, 0x32, 0xa6, 0xc2, 0x23, 0x3d, 0xee, 0x4c, 0x95, 0x0b, 0x42, 0xfa, 0xc3, 0x4e],
                                           [0x08, 0x2e, 0xa1, 0x66, 0x28, 0xd9, 0x24, 0xb2, 0x76, 0x5b, 0xa2, 0x49, 0x6d, 0x8b, 0xd1, 0x25],
@@ -178,7 +178,7 @@ const TE3: [u32;256] = [
 
 #[allow(non_camel_case_types)]
 pub struct AES128 {
-    expanded_key: [u8;44],
+    expanded_key: [[u8;4];44],
     pub encrypt: fn(&AES128, &[u8]) -> Vec<u8>,
     pub decrypt: fn(&AES128, &[u8]) -> Vec<u8>,
     encrypt_block: fn(&AES128, &[u8;16]) -> [u8;16],
@@ -186,9 +186,43 @@ pub struct AES128 {
 }
 
 impl AES128 {
-    
+	pub fn new_from_str(key: &str) -> AES128 {
+        let key_bytes = key.as_bytes();
+        if key_bytes.len() != 16 {
+            panic!("Key needs to be 16 bytes long");
+        } 
+
+        return AES128 {
+            expanded_key: key_schedule_AES128(&clone_into_array(key_bytes)),
+            encrypt: encrypt_AES128,
+            decrypt: decrypt_AES128,
+            encrypt_block: encrypt_block_AES128,
+            decrypt_block: decrypt_block_AES128,
+        }
+    }
+
+    pub fn new(key: &[u8; 16]) -> AES128 {
+        return AES128 {
+            expanded_key: key_schedule_AES128(key),
+            encrypt: encrypt_AES128,
+            decrypt: decrypt_AES128,
+            encrypt_block: encrypt_block_AES128,
+            decrypt_block: decrypt_block_AES128,
+        }
+    }
 }
 
+fn clone_into_array<A, T>(slice: &[T]) -> A
+where
+    A: Default + AsMut<[T]>,
+    T: Clone,
+{
+    let mut a = A::default();
+    <A as AsMut<[T]>>::as_mut(&mut a).clone_from_slice(slice);
+    a
+}
+
+#[allow(non_snake_case)]
 fn key_schedule_AES128(key_bytes: &[u8;16]) -> [[u8;4];44] {
     let mut original_key = [[0u8;4];4];
     let mut expanded_key = [[0u8;4];44];
@@ -257,4 +291,208 @@ fn xor_words(word1: &[u8; 4], word2: &[u8; 4]) -> [u8;4] {
     }
 
     return result;
+}
+
+fn parse_byte(data: u32) -> [u8;4] {
+	let ans: [u8;4] = [
+		(data >> 24 & 0xFF) as u8,
+		(data >> 16 & 0xFF) as u8,
+		(data >> 8 & 0xFF) as u8,
+		(data & 0xFF) as u8,
+	];
+	ans
+}
+
+fn encrypt_AES128(aes128: &AES128, bytes: &[u8]) -> Vec<u8> {
+    if bytes.len()%16!=0 {
+        panic!("Input is not multiple of 16 bytes!");
+    }
+
+    let mut result = vec![0u8; bytes.len()];
+
+    for i in 0..bytes.len()/16 {
+        let mut block = [0u8;16];
+        for j in 0..16 {
+            block[j] = bytes[i*16 + j];
+        }
+        block = encrypt_block_AES128(aes128, &block);
+        for j in 0..16 {
+            result[i*16 + j] = block[j];
+        }
+    }
+
+    return result;
+}
+
+fn encrypt_block_AES128(aes128: &AES128, bytes: &[u8;16]) -> [u8;16] {
+	let mut result = [0u8;16];
+	let mut state = [0u32;4];
+
+	let initial_key = &aes128.expanded_key[0..4];
+	for i in 0..4 {
+		for pos in 4*i..4*(i+1) {
+			let shift_level = 8 * (3 - pos % 4) as u32;
+			state[i] |= (bytes[pos] as u32) << shift_level;
+		}
+		let key_byte = (initial_key[i][0] as u32) << 24 | (initial_key[i][1] as u32) << 16 | (initial_key[i][2] as u32) << 8 | initial_key[i][3] as u32;
+		state[i] ^= key_byte;
+	}
+
+	for round in 1..10 {
+		let round_key = &aes128.expanded_key[4*round..4*(round+1)];
+		let key_bytes = [
+			(round_key[0][0] as u32) << 24 | (round_key[0][1] as u32) << 16 | (round_key[0][2] as u32) << 8 | round_key[0][3] as u32,
+			(round_key[1][0] as u32) << 24 | (round_key[1][1] as u32) << 16 | (round_key[1][2] as u32) << 8 | round_key[1][3] as u32,
+			(round_key[2][0] as u32) << 24 | (round_key[2][1] as u32) << 16 | (round_key[2][2] as u32) << 8 | round_key[2][3] as u32,
+			(round_key[3][0] as u32) << 24 | (round_key[3][1] as u32) << 16 | (round_key[3][2] as u32) << 8 | round_key[3][3] as u32,
+		];
+
+		let state_buff = [state[0] as usize, state[1] as usize, state[2] as usize, state[3] as usize];
+		for i in 0..4 {
+			state[i] = TE0[state_buff[i] >> 24] ^ TE1[state_buff[(i+1)%4] >> 16 & 0xFF] ^ TE2[state_buff[(i+2)%4] >> 8 & 0xFF] ^ TE3[state_buff[(i+3)%4] & 0xFF] ^ key_bytes[i];
+		}
+	}
+
+	let round_key = &aes128.expanded_key[4*10..4*11];
+	let state_buff = [parse_byte(state[0]), parse_byte(state[1]), parse_byte(state[2]), parse_byte(state[3])];
+
+	for i in 0..4 {
+		for j in 0..4 {
+			let pos = 4 * i + j;
+			result[pos] = substitute(state_buff[(i+j)%4][j], true) ^ round_key[i][j];
+		}
+	}
+
+	result
+}
+
+fn add_round_key(state:&mut [[u8;4];4], key: &[[u8;4];4]) {
+    for i in 0..4 {
+        for j in 0..4 {
+            state[i][j] = state[i][j] ^ key[j][i];
+        }
+    }
+}
+
+fn inv_sub_bytes(state:&mut [[u8;4];4]) {
+    for i in 0..4 {
+        for j in 0..4 {
+            state[i][j] = substitute(state[i][j], false);
+        }
+    }
+}
+
+fn inv_shift_rows(state:&mut [[u8;4];4]) {
+    for i in (1..4).rev() {
+        let mut tmp = vec![0u8;i];
+        for j in 0..i {
+            tmp[j] = state[4-i][j];
+        }
+        for j in 0..4-i {
+            state[4-i][j] = state[4-i][j+i];
+        }
+        for j in 0..i {
+            state[4-i][3-j] = tmp[i-j-1];
+        }
+    }
+}
+
+fn galois_multiplication(ap: u8, bp: u8) -> u8 {
+    let mut p = 0u8;
+    let mut high_bit = 0u8;
+    let mut a = ap;
+    let mut b = bp;
+    for i in 0..8 {
+        if b&1 == 1 {
+            p ^= a
+        }
+        high_bit = a & 0x80;
+        a = (a<<1) & 0xFF;
+        if high_bit == 0x80 {
+            a ^= 0x1b;
+        }
+        b = (b>>1) & 0xFF;
+    }
+    return p & 0xFF;
+}
+
+fn inv_mix_columns(state: &mut [[u8;4];4]) {
+    for i in 0..4 {
+
+        let mut temp = [0u8;4];
+        for j in 0..4 {
+            temp[j] = state[j][i];
+        }
+
+        state[0][i] = galois_multiplication(temp[0], 14) ^ galois_multiplication(temp[3], 9) ^ galois_multiplication(temp[2], 13) ^ galois_multiplication(temp[1], 11);
+        state[1][i] = galois_multiplication(temp[1], 14) ^ galois_multiplication(temp[0], 9) ^ galois_multiplication(temp[3], 13) ^ galois_multiplication(temp[2], 11);
+        state[2][i] = galois_multiplication(temp[2], 14) ^ galois_multiplication(temp[1], 9) ^ galois_multiplication(temp[0], 13) ^ galois_multiplication(temp[3], 11);
+        state[3][i] = galois_multiplication(temp[3], 14) ^ galois_multiplication(temp[2], 9) ^ galois_multiplication(temp[1], 13) ^ galois_multiplication(temp[0], 11);
+    }
+}
+
+fn decrypt_AES128(aes128: &AES128, bytes: &[u8]) -> Vec<u8> {
+    if bytes.len()%16!=0 {
+        panic!("Input is not multiple of 16 bytes!");
+    }
+
+    let mut result = vec![0u8; bytes.len()];
+
+    for i in 0..bytes.len()/16 {
+        let mut block = [0u8;16];
+        for j in 0..16 {
+            block[j] = bytes[i*16 + j];
+        }
+        block = decrypt_block_AES128(aes128, &block);
+        for j in 0..16 {
+            result[i*16 + j] = block[j];
+        }
+    }
+
+    return result;
+}
+
+fn decrypt_block_AES128(aes128: &AES128, bytes: &[u8;16]) -> [u8;16] {
+    let mut result = [0u8;16];
+
+    let mut state = [[0u8;4];4];
+    for i in 0..16 {
+        state[i%4][i/4] = bytes[i];
+    }
+
+    add_round_key(&mut state, &clone_into_array(&aes128.expanded_key[40..44]));
+    inv_shift_rows(&mut state);
+    inv_sub_bytes(&mut state);
+
+    for i in (1..10).rev() {
+        add_round_key(&mut state, &clone_into_array(&aes128.expanded_key[i*4..(i+1)*4]));
+        inv_mix_columns(&mut state);
+        inv_shift_rows(&mut state);
+        inv_sub_bytes(&mut state);
+    }
+
+    add_round_key(&mut state, &clone_into_array(&aes128.expanded_key[0..4]));
+
+    for i in 0..4 {
+        for j in 0..4 {
+            result[4*j+i] = state[i][j]
+        }
+    }
+
+    return result;
+}
+
+pub fn run_test() {
+    println!("Testing simple encryption");
+    let aes: AES128 = AES128::new_from_str("YellowSubmarine!");
+
+    let mut basic_input = [65u8;16];
+    let encryption_result = (aes.encrypt)(&aes, &basic_input);
+    assert!(encryption_result == [28, 203, 121, 8, 47, 187, 48, 216, 108, 79, 120, 29, 203, 136, 214, 44]);
+    println!("Testing simple encryption - Test OK");
+
+    println!("Testing simple decryption");
+    let decryption_result = (aes.decrypt)(&aes, &encryption_result);
+    assert!(decryption_result == basic_input);
+    println!("Testing simple decryption - Test OK");
 }

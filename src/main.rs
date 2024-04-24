@@ -1,4 +1,6 @@
+use aes_tbox::run_test;
+
 mod aes_tbox;
 fn main() {
-    println!("Hello, world!");
+    run_test();
 }
