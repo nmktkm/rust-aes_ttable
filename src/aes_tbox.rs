@@ -402,7 +402,7 @@ fn galois_multiplication(ap: u8, bp: u8) -> u8 {
     let mut high_bit = 0u8;
     let mut a = ap;
     let mut b = bp;
-    for i in 0..8 {
+    for _ in 0..8 {
         if b&1 == 1 {
             p ^= a
         }
